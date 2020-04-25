@@ -1,2 +1,2 @@
 # machineLearningProjects
-Personal and educational machine learning projects
+Tim Ip's personal and educational machine learning projects
