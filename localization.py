@@ -48,7 +48,24 @@
 #  [-1,0] - up
 
 # Start of my code
-def moveFxn(p, p_move, xmove, ymove): 
+
+#Move function if there is probability of over/under shoot not just move/not move
+def moveFxn(p, p_exact, p_over, p_under, xmove, ymove): 
+    qall = [[0 for row in range(len(p[0]))] for col in range(len(p))]
+    for ii, row in enumerate(p):
+        for jj, x in enumerate(row):
+            # probability per position = moved from P * P_move + current P * (1-P_move)
+            qall[ii][jj] += p[(ii-ymove) % len(p)][(jj-xmove) % len(row)] * p_exact
+            if(xmove != 0):
+                qall[ii][(jj-1)%len(row)] += p[(ii-ymove) % len(p)][(jj-xmove) % len(row)] * p_under
+                qall[ii][(jj+1)%len(row)] += p[(ii-ymove) % len(p)][(jj-xmove) % len(row)] * p_over
+            if(ymove !=0 ): 
+                qall[(ii-1)%len(row)][jj] += p[(ii-ymove) % len(p)][(jj-xmove) % len(row)] * p_under
+                qall[(ii+1)%len(row)][jj] += p[(ii-ymove) % len(p)][(jj-xmove) % len(row)] * p_over
+    return qall
+
+
+def moveFxnBinary(p, p_move, xmove, ymove): 
     qall = []
     for ii, row in enumerate(p):
         q = []
