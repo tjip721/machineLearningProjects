@@ -13,6 +13,7 @@ class environment:
         self.delta = delta
         self.map = [['' for x in range(self.width)] for y in range(self.length)]
         self.features = []
+        self.goalTheta = 0
         self.robots = None
 
     
@@ -24,11 +25,12 @@ class environment:
             self.map[y][x] = 'x'
         return
     
-    def addGoal(self, coordPair):
+    def addGoal(self, coordPair, theta=0):
         x = coordPair[0]
         y = coordPair[1]
         self.goalX = x
         self.goalY = y
+        self.goalTheta = theta
         self.map[y][x] = 'G'
         return
 
@@ -114,34 +116,63 @@ class environment:
         return path
             
 
-    def planDP(self, costFxn=[1,1,1,1], moves = [[1,0],[-1,0],[0,1],[0,-1]]):
+    def planDP(self, costFxn=[1,1,1], moves = [[0,-1],[1,0],[0,1],[-1,0]], headings = [0, 90, 180, 270]):
+        headingChange = [270, 0, 90] #Three orientation changes for three possible car actions, left/right/forward, essentially bicycle model
+        headingMap = {0:0, 90:1, 180:2, 270:3}
         x = self.goalX
         y = self.goalY
-        costGraph = [[float('inf') for x in row] for row in self.map]
-#        moveGraph = [['' for x in row] for row in self.map]
+        theta = self.goalTheta
+        costGraph = [[[float('inf') for x in row] for row in self.map] for heading in headingMap]
+        moveSymbol = ['L', '#', 'R']
+        moveGraph = [[['' for x in row] for row in self.map] for heading in headingMap]
         #start at goal, work outwards BFS, applying cost of moves to adjacent cells
         #continue as long as cells are updated
-        costGraph[y][x] = 0
+        costGraph[headingMap[theta]][y][x] = 0
         updateQ= queue.Queue()
-        updateQ.put([y,x])
+        updateQ.put([x,y,theta])
         while not updateQ.empty():
             nextMove = updateQ.get()
-            x = nextMove[1]
-            y = nextMove[0]
+            x = nextMove[0]
+            y = nextMove[1]
+            theta = nextMove[2]
 
-            for ii, move in enumerate(moves):
-                delx = move[1]
-                dely = move[0]
-                x1 = x + delx
-                y1 = y + dely
-                moveCost = costGraph[y][x] + costFxn[ii]
-                if x1 >= 0 and x1 < self.width and y1 >= 0 and y1 < self.length and costGraph[y1][x1] > moveCost and self.map[y1][x1] != 'x':
-                    updateQ.put([y1,x1])
-                    costGraph[y1][x1] = costGraph[y][x] + costFxn[ii]
-            
+            for ii, delHeading in enumerate(headingChange):
+                #Assumes model turns first then moves
+                theta1 = (theta + 360 - delHeading)%360
+                delx = moves[headingMap[theta]][0]
+                dely = moves[headingMap[theta]][1]
+                x1 = x - delx
+                y1 = y - dely
+                moveCost = costGraph[headingMap[theta]][y][x] + costFxn[ii]
+                if x1 >= 0 and x1 < self.width and y1 >= 0 and y1 < self.length and costGraph[headingMap[theta1]][y1][x1] > moveCost and self.map[y1][x1] != 'x':
+                    updateQ.put([x1,y1,theta1])
+                    costGraph[headingMap[theta1]][y1][x1] = moveCost
+                    moveGraph[headingMap[theta1]][y1][x1] = moveSymbol[ii]
 
-        return costGraph
+        return costGraph, moveGraph
 
+    def currentDP(self, costGraph, moveGraph):
+        moves = [[0,-1],[1,0],[0,1],[-1,0]]
+        headingMap = {0:0, 90:1, 180:2, 270:3}
+ 
+        x = self.robot.x
+        y = self.robot.y
+        theta = self.robot.theta
+        visual = [['' for x in row] for row in costGraph[0]]
+        while costGraph[headingMap[theta]][y][x] != 0: 
+            visual[y][x] = moveGraph[headingMap[theta]][y][x] 
+            move = moveGraph[headingMap[theta]][y][x]
+            if move == 'L' : 
+                theta = (theta + 270)%360
+            elif move == 'R' : 
+                theta = (theta + 90)%360
+            x = x + moves[headingMap[theta]][0]
+            y = y + moves[headingMap[theta]][1]
+        for y in range(self.length):
+            for x in range(self.width):
+                if self.map[y][x] == 'x':
+                    visual[y][x] = self.map[y][x]
+        return visual
 
 
 
@@ -151,8 +182,8 @@ world.print()
 feature = [[1,ii] for ii in range(world.length-1)]
 world.addFeature(feature)
 world.addGoal([9,7])
-robot = robot(0,0,0,world)
-world.addRobot(robot)
+rb = robot(0,0,0,world)
+world.addRobot(rb)
 world.print()
 world.moveRobot([1,1],0)
 world.moveRobot([0,1],0)
@@ -165,5 +196,24 @@ for y in range(world.length):
         hueristic[y].append( math.sqrt((world.goalX-x)**2 + (world.goalY-y)**2) )
 pathPlan = world.planAStar(hueristic)
 world.prettyPrint(pathPlan)
-dpPlan = world.planDP()
-world.prettyPrint(dpPlan)
+
+#Test DP algorithm on left turn scenario world
+costFxn = [1, 1, 1, 10]
+driveWorld = environment(6,6,1)
+driveWorld.addGoal([0,3],270)
+features = [[0,0], [0,1], [0,2], [1,0], [1,1], [1,2],
+    [0,4], [0,5], [1,4], [1,5],
+    [3,4], [4,4], 
+    [3,2], [3,1], [4,2], [4,1] ]
+driveWorld.addFeature(features)
+driveRobot = robot(2,5,0,driveWorld)
+driveWorld.addRobot(driveRobot)
+moveCosts = [15, 1, 1]
+moves = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0]]
+driveWorld.prettyPrint()
+dpCost, dpPlan = driveWorld.planDP(moveCosts)
+dpVisual = driveWorld.currentDP(dpCost, dpPlan)
+driveWorld.prettyPrint(dpVisual)
+dpCost, dpPlan = driveWorld.planDP([1,1,1])
+dpVisual = driveWorld.currentDP(dpCost, dpPlan)
+driveWorld.prettyPrint(dpVisual)
