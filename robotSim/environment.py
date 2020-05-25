@@ -1,7 +1,10 @@
 
+from bicycleRobot import *
+import copy
 import heapq
 import queue
 import math
+import matplotlib.pyplot as plt
 import numpy as np
 from robot import *
 
@@ -144,6 +147,7 @@ class environment:
                 x1 = x - delx
                 y1 = y - dely
                 moveCost = costGraph[headingMap[theta]][y][x] + costFxn[ii]
+                #Add stochastic cost function to make DP account for obstacle avoidance
                 if x1 >= 0 and x1 < self.width and y1 >= 0 and y1 < self.length and costGraph[headingMap[theta1]][y1][x1] > moveCost and self.map[y1][x1] != 'x':
                     updateQ.put([x1,y1,theta1])
                     costGraph[headingMap[theta1]][y1][x1] = moveCost
@@ -159,6 +163,7 @@ class environment:
         y = self.robot.y
         theta = self.robot.theta
         visual = [['' for x in row] for row in costGraph[0]]
+        coordPlan= [[x,y]]
         while costGraph[headingMap[theta]][y][x] != 0: 
             visual[y][x] = moveGraph[headingMap[theta]][y][x] 
             move = moveGraph[headingMap[theta]][y][x]
@@ -168,52 +173,39 @@ class environment:
                 theta = (theta + 90)%360
             x = x + moves[headingMap[theta]][0]
             y = y + moves[headingMap[theta]][1]
+            coordPlan.append([x,y])
         for y in range(self.length):
             for x in range(self.width):
                 if self.map[y][x] == 'x':
                     visual[y][x] = self.map[y][x]
-        return visual
+        return visual, coordPlan
 
+    def smoothPlan(self, path, dataWeight = 0.5, smoothWeight= 0.1, tolerance = 0.0001):
 
+        newPath = copy.deepcopy(path)
+        change = tolerance 
+        while change >= tolerance:
+            change = 0.0
+            for ii in range(1, len(newPath)-1):
+                for jj in range(len(path[0])):
+                    start = newPath[ii][jj]
+                    newPath[ii][jj] +=  dataWeight*(path[ii][jj] - newPath[ii][jj]) + smoothWeight *(path[ii+1][jj]+ path[ii-1][jj] - 2*newPath[ii][jj])
+                    change += abs(start - newPath[ii][jj])
+        return newPath
 
+    def pathPlot(self, path, figNum=None):
+        for route in path:
+            xcoords = []
+            ycoords = []           
+            for coord in route:
+                xcoords.append(coord[0])
+                ycoords.append(coord[1])
+            if figNum:
+                f = plt.figure(figNum)
+            else:
+                f = plt.figure()
+            plt.plot(xcoords,ycoords)
+        f.show()
+        return
     
-world = environment()
-world.print()
-feature = [[1,ii] for ii in range(world.length-1)]
-world.addFeature(feature)
-world.addGoal([9,7])
-rb = robot(0,0,0,world)
-world.addRobot(rb)
-world.print()
-world.moveRobot([1,1],0)
-world.moveRobot([0,1],0)
-world.prettyPrint()
-hueristic = []
-world.prettyPrint(hueristic)
-for y in range(world.length):
-    hueristic.append([])
-    for x in range(world.width):
-        hueristic[y].append( math.sqrt((world.goalX-x)**2 + (world.goalY-y)**2) )
-pathPlan = world.planAStar(hueristic)
-world.prettyPrint(pathPlan)
 
-#Test DP algorithm on left turn scenario world
-costFxn = [1, 1, 1, 10]
-driveWorld = environment(6,6,1)
-driveWorld.addGoal([0,3],270)
-features = [[0,0], [0,1], [0,2], [1,0], [1,1], [1,2],
-    [0,4], [0,5], [1,4], [1,5],
-    [3,4], [4,4], 
-    [3,2], [3,1], [4,2], [4,1] ]
-driveWorld.addFeature(features)
-driveRobot = robot(2,5,0,driveWorld)
-driveWorld.addRobot(driveRobot)
-moveCosts = [15, 1, 1]
-moves = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0]]
-driveWorld.prettyPrint()
-dpCost, dpPlan = driveWorld.planDP(moveCosts)
-dpVisual = driveWorld.currentDP(dpCost, dpPlan)
-driveWorld.prettyPrint(dpVisual)
-dpCost, dpPlan = driveWorld.planDP([1,1,1])
-dpVisual = driveWorld.currentDP(dpCost, dpPlan)
-driveWorld.prettyPrint(dpVisual)
